@@ -1,0 +1,162 @@
+/**
+ * copy.c
+ *
+ * Computer Science 50
+ * Problem Set 4
+ *
+ * Reveals whodunit.
+ */
+       
+   
+#include <stdio.h>
+#include <stdlib.h>
+ 
+#include "bmp.h"
+ 
+int main(int argc, char* argv[])
+{
+    // ensure proper usage
+    if (argc != 3)
+    {
+        printf("Usage: ./copy infile outfile\n");
+        return 1;
+    }
+ 
+    // remember filenames
+    // this points to a char and stores it into 
+    // infile and outfile addresses.
+    char* infile = argv[1];
+    char* outfile = argv[2];
+ 
+    // open input file 
+    // this opens argv[1], which should be a file,
+    // to be read and placed into new FILE inptr.
+    FILE* inptr = fopen(infile, "r");
+    // if no file could be found or opened
+    if (inptr == NULL)
+    {
+        printf("Could not open %s.\n", infile);
+        return 2;
+    }
+ 
+    // open output file
+    // this opens argv[2] to be written and edited.
+    // and places it in FILE outptr.
+    FILE* outptr = fopen(outfile, "w");
+    if (outptr == NULL)
+    {
+        fclose(inptr);
+        fprintf(stderr, "Could not create %s.\n", outfile);
+        return 3;
+    }
+ 
+    // read infile's BITMAPFILEHEADER (size of 14 bytes)
+    /** 
+    * remember: infile is argv[1].
+    * BITMAPFILEHEADER is a typedef struct created in bmp.h
+    * this struct contain size and type among others.
+    */
+    BITMAPFILEHEADER bf;
+    /**
+    *bf is a declaration of a type BITMAPFILEHEADER
+    * fread will read contents of FILE inptr (argv[1]).
+    * this content will be read INTO the address of bf.
+    * sizeof,is the size of every element that will be read
+    * number 1 signifies the number of elements of size
+    * to be read.
+    */
+    fread(&bf, sizeof(BITMAPFILEHEADER), 1, inptr);
+ 
+    // read infile's BITMAPINFOHEADER (size of 40 bytes)
+    BITMAPINFOHEADER bi;
+    fread(&bi, sizeof(BITMAPINFOHEADER), 1, inptr);
+ 
+    // ensure infile is (likely) a 24-bit uncompressed BMP 4.0
+    /*
+    * bf.bfType calls member bfType of struct. If this is not equal to 
+    * BM, which in Hex is 0x4d42, then it is not a bmp.
+    * the offset is the number of bytes in fileheader and infoheader.
+    * the bmp image bytes begins from that offset of 54.  
+    */
+    if (bf.bfType != 0x4d42 || bf.bfOffBits != 54 || bi.biSize != 40 || 
+        bi.biBitCount != 24 || bi.biCompression != 0)
+    {
+    // this checks the if file is in fact a bmp, through its headers.
+        fclose(outptr);
+        fclose(inptr);
+        fprintf(stderr, "Unsupported file format.\n");
+        return 4;
+    }
+ 
+    // write outfile's BITMAPFILEHEADER
+    /*
+    * outptr will written into outptr which is argv[2]
+    * fwrite reads what is located at address of bf
+    * size is the size of the 1 item to read
+    * outptr will be the destination of the read files at bf
+    * remember, outptr is argv[2] and a FILE created above
+    */
+    fwrite(&bf, sizeof(BITMAPFILEHEADER), 1, outptr);
+ 
+    // write outfile's BITMAPINFOHEADER
+    fwrite(&bi, sizeof(BITMAPINFOHEADER), 1, outptr);
+ 
+    // determine padding for scanlines
+    int padding =  (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
+ 
+    // iterate over infile's scanlines
+    /*
+    * reads over each pixel in the infile(argv[1]) scanline
+    */
+    for (int i = 0, biHeight = abs(bi.biHeight); i < biHeight; i++)
+    {
+        // iterate over pixels in scanline
+        for (int j = 0; j < bi.biWidth; j++)
+        {
+            // temporary storage
+            RGBTRIPLE triple;
+ 
+            // read RGB triple from infile and reads it into address of triple.
+            fread(&triple, sizeof(RGBTRIPLE), 1, inptr);
+             
+            //convert all red pixels to white
+            // 0x0000ff to 0xffffff
+            if(triple.rgbtBlue == 0x00 && triple.rgbtGreen == 0x00
+            && triple.rgbtRed == 0xff)
+            {
+                triple.rgbtRed = 0xff;
+                triple.rgbtGreen = 0xff;
+                triple.rgbtBlue = 0xff;           
+            }
+             
+            fwrite(&triple, sizeof(RGBTRIPLE), 1, outptr);       
+        }
+ 
+        // skip over padding, if any
+        /*
+        * FILE I/O keeps track of reading position while reading
+        * the file. We can control how many bytes the cursor moves by with fseek.
+        * inptr is the file to seek in, in this case this file is infile.
+        * padding is the amount of bytes to cursor which is according to
+        * amount of padding needed to make amount of scanline bytes divisible
+        * by 4.
+        * seek_cur
+        */
+        fseek(inptr, padding, SEEK_CUR);
+ 
+        // then add it back (to demonstrate how)
+        for (int k = 0; k < padding; k++)
+        {
+            fputc(0x00, outptr);
+        }
+    }
+ 
+    // close infile
+    fclose(inptr);
+ 
+    // close outfile
+    fclose(outptr);
+ 
+    // that's all folks
+    return 0;
+}
